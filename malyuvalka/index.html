@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="uk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>body{margin:0}[hidden]{display:none!important}</style>
+<link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icon-180.png"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Малювалка">
+<title>Малювалка</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@800&display=swap">
+<style>
+/* Лист бумаги на столе, сбоку толстые мелки. Рисует сам след руки: ничего не надо зажимать. */
+:root {
+  color-scheme: light;
+  --paper: #fff9ec; --ink: #2a2140; --cream: #f6ecd6; --sun: #ffd23f; --tray: #c9915a;
+  --display: "Rubik", "Segoe UI Black", "Arial Black", sans-serif;
+  --emoji: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+}
+html, body { height: 100%; overscroll-behavior: none; }
+body {
+  position: fixed; inset: 0; overflow: hidden; touch-action: none;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Ccircle cx='32' cy='32' r='24' fill='%23ffd23f' fill-opacity='.75' stroke='%232a2140' stroke-width='5'/%3E%3Ccircle cx='32' cy='32' r='5' fill='%232a2140'/%3E%3C/svg%3E") 32 32, pointer;
+}
+#fx { position: fixed; inset: 0; z-index: 8; pointer-events: none; overflow: hidden; }
+.bit { position: absolute; left: 0; top: 0; }
+.star { clip-path: polygon(50% 0, 63% 35%, 100% 38%, 71% 60%, 81% 96%, 50% 75%, 19% 96%, 29% 60%, 0 38%, 37% 35%); }
+.dot { border-radius: 50%; }
+#start { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: #2a2140a6; padding-inline: 16px; }
+#start[hidden] { display: none; }
+#go {
+  display: grid; justify-items: center; gap: 2.4vmin; padding: 4vmin 7vmin; max-width: 100%; box-sizing: border-box;
+  border: 0; border-radius: 28px; background: var(--cream); color: var(--ink); cursor: inherit;
+  box-shadow: 0 8px 0 #6f4a1d, 0 18px 40px #0007; font: inherit;
+}
+#go:focus-visible { outline: 5px solid var(--sun); outline-offset: 5px; }
+#go h1 { margin: 0; font: 800 clamp(34px, 9vmin, 88px)/1 var(--display); }
+.play { width: 24vmin; height: 24vmin; border-radius: 50%; background: #e2513b; display: grid; place-items: center; box-shadow: inset 0 -1vmin 0 #0003; animation: breathe 1.6s ease-in-out infinite; }
+.play::after { content: ""; margin-left: 2.4vmin; border-left: 9vmin solid #fff; border-block: 5.6vmin solid #0000; }
+@keyframes breathe { 50% { transform: scale(1.07); } }
+#go small { font: 15px/1.4 system-ui, sans-serif; opacity: .75; text-wrap: balance; }
+@media (prefers-reduced-motion: reduce) { .play { animation: none; } }
+
+body { background: var(--paper); color: var(--ink); }
+#paper { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#tools {
+  position: fixed; z-index: 3; left: 0; top: 0; bottom: 0; width: 15vmin; min-width: 64px; box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 1.2vmin; padding: 1.2vmin;
+  padding-left: max(1.2vmin, env(safe-area-inset-left, 0px));
+  background: var(--tray); box-shadow: 4px 0 14px #4a2e0d55;
+}
+.tool { flex: 1; min-height: 0; border: 0; padding: 0; border-radius: 1.6vmin 40% 40% 1.6vmin; cursor: inherit; box-shadow: inset 0 -.8vmin 0 #0002, 0 3px 0 #4a2e0d66; transition: transform .12s; }
+.tool.on { transform: translateX(1.6vmin) scale(1.04); }
+#rainbow { background: linear-gradient(180deg, #e6332a, #f58220, #ffd400, #2fb457, #1f7ae0, #8a4fd3); }
+#sponge { border-radius: 1.6vmin; background: #ffe680 radial-gradient(circle at 30% 40%, #d9b94a 0 7%, #0000 8%) 0 0 / 34% 50%; }
+@media (orientation: portrait) {
+  #tools { top: auto; right: 0; width: auto; height: 15vmin; min-height: 64px; flex-direction: row; box-shadow: 0 -4px 14px #4a2e0d55; }
+  .tool { border-radius: 40% 40% 1.6vmin 1.6vmin; min-width: 0; }
+  .tool.on { transform: translateY(-1.6vmin) scale(1.04); }
+}
+</style>
+
+<canvas id="paper"></canvas>
+<div id="tools"></div>
+<div id="fx"></div>
+<div id="start">
+  <button id="go" type="button">
+    <span class="play"></span>
+    <h1>Малювалка</h1>
+    <small>Натисни, і відкриється на весь екран. Вийти: затисни Esc, потім Alt+F4.</small>
+  </button>
+</div>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const rnd = n => Math.floor(Math.random() * n);
+const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const anim = (el, frames, ms, opt = {}) => el.animate(frames, { duration: ms, easing: 'ease-out', ...opt });
+const NS = 'http://www.w3.org/2000/svg';
+
+/* ---------- звук: всё синтезируется, файлов нет ---------- */
+let ac, master, noiseBuf;
+function initAudio() {
+  if (ac) return ac.resume();
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  const comp = ac.createDynamicsCompressor();
+  master = ac.createGain(); master.gain.value = .6;
+  master.connect(comp); comp.connect(ac.destination);
+  noiseBuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
+  const d = noiseBuf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+}
+function env(v, at, d) {
+  const g = ac.createGain(), t = ac.currentTime + at;
+  g.gain.setValueAtTime(v, t);
+  g.gain.exponentialRampToValueAtTime(.001, t + d);
+  g.connect(master);
+  return g;
+}
+function tone(f, d = .3, { type = 'sine', v = .3, at = 0, to } = {}) {
+  if (!ac) return;
+  const o = ac.createOscillator(), t = ac.currentTime + at;
+  o.type = type; o.frequency.setValueAtTime(f, t);
+  if (to) o.frequency.exponentialRampToValueAtTime(to, t + d);
+  o.connect(env(v, at, d)); o.start(t); o.stop(t + d);
+}
+function noise(d = .1, { f = 1500, q = 1, v = .3, at = 0 } = {}) {
+  if (!ac) return;
+  const s = ac.createBufferSource(), b = ac.createBiquadFilter(), t = ac.currentTime + at;
+  s.buffer = noiseBuf; b.type = 'bandpass'; b.frequency.value = f; b.Q.value = q;
+  s.connect(b); b.connect(env(v, at, d)); s.start(t, Math.random() * .5, d);
+}
+const PENTA = [523, 587, 659, 784, 880, 1047, 1175, 1319];
+const pop = () => { noise(.05, { f: 2400, v: .3 }); tone(500 + rnd(500), .1, { to: 180, v: .28 }); };
+
+/* голос: украинский, если есть; иначе русская Ирина, которой слова записаны так, чтобы звучали по-украински */
+let voice;
+function pickVoice() {
+  const all = speechSynthesis.getVoices(), has = l => v => v.lang.toLowerCase().startsWith(l);
+  voice = all.find(has('uk')) || all.find(v => has('ru')(v) && /irina/i.test(v.name)) || all.find(has('ru'));
+}
+const RU_SOUNDS = { и: 'ы', і: 'и', І: 'И', е: 'э', є: 'е', ї: 'йи', "'": 'ъ' };
+const forVoice = (t, lang) => lang.toLowerCase().startsWith('uk') ? t : t.replace(/[иіІеєї']/g, c => RU_SOUNDS[c]);
+if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+function say(text, at = 0) {
+  const phone = window.KlacTTS; // в приложении на Android говорит сам телефон: встроенный браузер голоса не имеет
+  if (!phone && !voice) return;
+  const go = () => {
+    if (phone) return phone.say(forVoice(text, phone.lang()));
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(forVoice(text, voice.lang));
+    u.voice = voice; u.lang = voice.lang; u.rate = .85; u.pitch = 1.25;
+    speechSynthesis.speak(u);
+  };
+  at ? setTimeout(go, at) : go();
+}
+
+/* ---------- эффекты: звёзды из места нажатия и след за мышкой ---------- */
+const fx = $('#fx');
+const COLORS = ['#ff4d4d', '#ffb400', '#ffe14d', '#37c871', '#2fa8ff', '#a06bff', '#ff6fb5'];
+function bit(cls, x, y, size) {
+  if (fx.childElementCount > 160) return null;
+  const b = document.createElement('div');
+  b.className = 'bit ' + cls;
+  b.style.cssText = `width:${size}px;height:${size}px;background:${COLORS[rnd(COLORS.length)]}`;
+  fx.append(b);
+  return b;
+}
+function burst(x, y, n = 9) {
+  const u = Math.min(innerWidth, innerHeight) / 1000;
+  for (let i = 0; i < n; i++) {
+    const size = (26 + rnd(30)) * u + 8, b = bit('star', x, y, size);
+    if (!b) return;
+    const a = i / n * 6.283 + Math.random(), r = (110 + rnd(150)) * u + 30;
+    const dx = x + Math.cos(a) * r - size / 2, dy = y + Math.sin(a) * r - size / 2;
+    anim(b, [
+      { transform: `translate(${x - size / 2}px,${y - size / 2}px) scale(.3)`, opacity: 1 },
+      { transform: `translate(${dx}px,${dy}px) rotate(${rnd(360)}deg) scale(1)`, opacity: 1, offset: .75 },
+      { transform: `translate(${dx}px,${dy + 30}px) rotate(${rnd(360)}deg) scale(.5)`, opacity: 0 },
+    ], 750).onfinish = () => b.remove();
+  }
+}
+let lastTrail = 0;
+function trail(x, y) {
+  const now = performance.now();
+  if (calm || now - lastTrail < 50) return;
+  lastTrail = now;
+  const size = 12 + rnd(16), b = bit('dot', x, y, size);
+  if (!b) return;
+  anim(b, [
+    { transform: `translate(${x - size / 2}px,${y - size / 2}px)`, opacity: .9 },
+    { transform: `translate(${x - size / 2}px,${y + 24}px) scale(.2)`, opacity: 0 },
+  ], 650).onfinish = () => b.remove();
+}
+
+const ANIMALS = [
+  ['🐱', 'Кішка! Няв!'], ['🐶', 'Собачка! Гав-гав!'], ['🐮', 'Корова! Му-у!'], ['🐷', 'Свинка! Рох-рох!'],
+  ['🐸', 'Жабка! Ква-ква!'], ['🦆', 'Качечка! Кря-кря!'], ['🐔', 'Курочка! Ко-ко-ко!'], ['🐑', 'Овечка! Бе-е!'],
+  ['🐴', 'Конячка! І-го-го!'], ['🐭', 'Мишка! Пі-пі!'], ['🐻', 'Ведмедик!'], ['🐰', 'Зайчик!'],
+];
+
+let lastInput = 0;
+const started = () => $('#start').hidden;
+const KEYROWS = [
+  [0, 'Backquote Digit1 Digit2 Digit3 Digit4 Digit5 Digit6 Digit7 Digit8 Digit9 Digit0 Minus Equal Backspace'],
+  [1, 'Tab KeyQ KeyW KeyE KeyR KeyT KeyY KeyU KeyI KeyO KeyP BracketLeft BracketRight Backslash'],
+  [1, 'CapsLock KeyA KeyS KeyD KeyF KeyG KeyH KeyJ KeyK KeyL Semicolon Quote Enter'],
+  [2, 'ShiftLeft KeyZ KeyX KeyC KeyV KeyB KeyN KeyM Comma Period Slash ShiftRight'],
+  [2, 'ControlLeft MetaLeft AltLeft Space AltRight MetaRight ContextMenu ControlRight'],
+];
+const KEYPOS = {};
+KEYROWS.forEach(([, s], r) => s.split(' ').forEach((c, n, a) => { KEYPOS[c] = { x: (n + .5) / a.length, y: (r + .5) / KEYROWS.length }; }));
+
+addEventListener('contextmenu', e => e.preventDefault());
+addEventListener('dragstart', e => e.preventDefault());
+addEventListener('beforeunload', e => { if (started()) e.preventDefault(); });
+
+/* ---------- старт и полный экран ---------- */
+const isIPad = navigator.maxTouchPoints > 1 && /Mac|iPad/.test(navigator.platform);
+if (window.KlacTTS) $('#go small').textContent = 'Вийти: двічі натисни «Назад».';
+else if (isIPad) $('#go small').textContent = navigator.standalone ? 'Натисни, щоб почати.' : 'Щоб встановити: «Поділитися», потім «На початковий екран».';
+
+/* iPad может усыпить звук, пока приложение в фоне: будим при возврате и при каждом касании */
+const wakeAudio = () => { if (ac && ac.state !== 'running') ac.resume().catch(() => {}); };
+document.addEventListener('visibilitychange', wakeAudio);
+document.addEventListener('pointerdown', wakeAudio, true);
+
+let wasFull = false;
+$('#go').addEventListener('click', () => {
+  $('#start').hidden = true;
+  initAudio();
+  if ('speechSynthesis' in window) { // iPad разрешает голос только после нажатия и не всегда сообщает о готовности голосов
+    pickVoice();
+    speechSynthesis.speak(new SpeechSynthesisUtterance(' '));
+  }
+  lastInput = performance.now();
+  if (window.KlacTTS) return; // на Android весь экран уже держит само приложение
+  document.documentElement.requestFullscreen?.()
+    .then(() => { wasFull = true; return navigator.keyboard?.lock?.(); })
+    .catch(() => {});
+});
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && wasFull) { wasFull = false; $('#start').hidden = false; }
+});
+
+const canvas = $('#paper'), ctx = canvas.getContext('2d');
+const PAPER = '#fff9ec';
+let dpr = 1;
+function fit() {
+  const copy = document.createElement('canvas');
+  copy.width = canvas.width; copy.height = canvas.height;
+  if (canvas.width) copy.getContext('2d').drawImage(canvas, 0, 0);
+  dpr = Math.min(devicePixelRatio || 1, 2);
+  canvas.width = innerWidth * dpr; canvas.height = innerHeight * dpr;
+  ctx.fillStyle = PAPER; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(copy, 0, 0);
+  ctx.lineCap = ctx.lineJoin = 'round';
+}
+fit();
+addEventListener('resize', fit);
+
+/* мелки: радуга плюс пять цветов и губка */
+const CRAYONS = [['rainbow', null, 'Веселка'], ['c1', '#e6332a', 'Червоний'], ['c2', '#ffc400', 'Жовтий'], ['c3', '#2fb457', 'Зелений'], ['c4', '#1f7ae0', 'Синій'], ['c5', '#8a4fd3', 'Фіолетовий']];
+let color = null, hue = rnd(360);
+const tools = $('#tools');
+function press(btn) { anim(btn, [{ scale: '1' }, { scale: '.9', offset: .3 }, { scale: '1' }], 180); }
+CRAYONS.forEach(([id, c, word], i) => {
+  const b = document.createElement('button');
+  b.className = 'tool' + (c ? '' : ' on'); b.id = id; b.type = 'button'; b.tabIndex = -1;
+  if (c) b.style.background = c;
+  b.addEventListener('pointerdown', () => {
+    if (!started()) return;
+    color = c;
+    tools.querySelectorAll('.tool').forEach(t => t.classList.toggle('on', t === b));
+    press(b);
+    tone(PENTA[i + 1], .25, { type: 'triangle', v: .3 });
+    say(word, 80);
+  });
+  tools.append(b);
+});
+const sponge = document.createElement('button');
+sponge.className = 'tool'; sponge.id = 'sponge'; sponge.type = 'button'; sponge.tabIndex = -1;
+sponge.addEventListener('pointerdown', wipe);
+tools.append(sponge);
+
+let wiping = false;
+function wipe() {
+  if (!started() || wiping) return;
+  wiping = true;
+  press(sponge);
+  for (let k = 0; k < 6; k++) noise(.14, { f: 1400 + k * 300, q: .7, v: .22, at: k * .12 });
+  const w = canvas.width, h = canvas.height, t0 = performance.now();
+  const step = t => { // влажная полоса едет сверху вниз
+    const k = Math.min(1, (t - t0) / 800);
+    ctx.fillStyle = PAPER;
+    ctx.fillRect(0, 0, w, h * k);
+    if (k < 1) requestAnimationFrame(step); else wiping = false;
+  };
+  requestAnimationFrame(step);
+  say('Чисто!', 700);
+}
+
+/* рисование: мышкой без зажатия, пальцем по касанию, у каждого пальца свой след */
+const strokes = new Map();
+let lastNote = 0;
+function draw(id, x, y) {
+  const s = strokes.get(id);
+  const dist = s ? Math.hypot(x - s.x, y - s.y) : 0;
+  if (s) s.moved += dist;
+  hue = (hue + dist * .25) % 360;
+  ctx.strokeStyle = color || `hsl(${hue} 90% 55%)`;
+  ctx.lineWidth = Math.max(16, Math.min(innerWidth, innerHeight) * .035) * dpr;
+  ctx.beginPath();
+  ctx.moveTo((s ? s.x : x) * dpr, (s ? s.y : y) * dpr);
+  ctx.lineTo(x * dpr, y * dpr);
+  ctx.stroke();
+  strokes.set(id, { x, y, moved: s ? s.moved : 0 });
+  const now = performance.now();
+  if (dist > 3 && now - lastNote > 110) {
+    lastNote = now;
+    tone(PENTA[clampNote(7 - Math.floor(y / innerHeight * 8))], .16, { v: .07 });
+  }
+}
+const clampNote = i => Math.max(0, Math.min(7, i));
+
+let lastStamp = 0, stampI = rnd(ANIMALS.length);
+function stamp(x, y) {
+  const now = performance.now();
+  if (now - lastStamp < 350) return;
+  lastStamp = now;
+  stampI = (stampI + 1) % ANIMALS.length;
+  const size = Math.min(innerWidth, innerHeight) * .2 * dpr;
+  ctx.font = `${size}px ${getComputedStyle(document.documentElement).getPropertyValue('--emoji')}`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#000';
+  ctx.fillText(ANIMALS[stampI][0], x * dpr, y * dpr);
+  tone(320, .22, { type: 'triangle', to: 680, v: .22 });
+  burst(x, y, 7);
+  say(ANIMALS[stampI][1], 150);
+}
+
+document.addEventListener('pointerdown', e => {
+  if (!started() || e.target.closest('#tools')) return;
+  lastInput = performance.now();
+  if (e.pointerType === 'mouse') { stamp(e.clientX, e.clientY); return; }
+  strokes.delete(e.pointerId);
+  draw(e.pointerId, e.clientX, e.clientY);
+});
+document.addEventListener('pointermove', e => {
+  if (!started()) return;
+  if (e.pointerType === 'mouse') { if (!e.target.closest('#tools')) draw('mouse', e.clientX, e.clientY); else strokes.delete('mouse'); return; }
+  if (strokes.has(e.pointerId)) draw(e.pointerId, e.clientX, e.clientY);
+});
+const endTouch = e => {
+  const s = strokes.get(e.pointerId);
+  if (s && e.type === 'pointerup' && s.moved < 14) stamp(s.x, s.y); // просто тык, без линии: ставим зверя
+  strokes.delete(e.pointerId);
+};
+document.addEventListener('pointerup', endTouch);
+document.addEventListener('pointercancel', endTouch);
+document.addEventListener('pointerleave', () => strokes.delete('mouse'));
+
+/* клавиша ставит зверя там же, где лежит на клавиатуре */
+document.addEventListener('keydown', e => {
+  if (!started()) return;
+  e.preventDefault();
+  if (e.repeat) return;
+  const p = KEYPOS[e.code] || { x: Math.random(), y: Math.random() };
+  stamp(innerWidth * (.18 + p.x * .74), innerHeight * (.1 + p.y * .8));
+});
+let lastWheel = 0;
+addEventListener('wheel', e => {
+  e.preventDefault();
+  if (!started() || performance.now() - lastWheel < 500) return;
+  lastWheel = performance.now();
+  hue = (hue + 60) % 360;
+  tone(660, .1, { type: 'triangle', v: .2 });
+}, { passive: false });
+</script>
+<script>navigator.serviceWorker?.register('sw.js').catch(() => {});</script>
+</html>

@@ -1,0 +1,22 @@
+{
+ "name": "Клацалка",
+ "short_name": "Клацалка",
+ "lang": "uk",
+ "start_url": ".",
+ "scope": ".",
+ "display": "standalone",
+ "background_color": "#d8ae74",
+ "theme_color": "#d8ae74",
+ "icons": [
+  {
+   "src": "icon-180.png",
+   "sizes": "180x180",
+   "type": "image/png"
+  },
+  {
+   "src": "icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png"
+  }
+ ]
+}

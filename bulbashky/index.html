@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="uk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>body{margin:0}[hidden]{display:none!important}</style>
+<link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icon-180.png"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Бульбашки">
+<title>Бульбашки</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@800&display=swap">
+<style>
+/* Поляна под небом: снизу поднимаются мыльные пузыри, в половине сидят зверята. */
+:root {
+  color-scheme: light;
+  --sky: #7fd0f5; --sky-low: #d8f3ff; --hill: #6cc24a; --hill-far: #93d56b; --ink: #2a2140; --cream: #f6ecd6; --sun: #ffd23f;
+  --display: "Rubik", "Segoe UI Black", "Arial Black", sans-serif;
+  --emoji: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+}
+html, body { height: 100%; overscroll-behavior: none; }
+body {
+  position: fixed; inset: 0; overflow: hidden; touch-action: none;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Ccircle cx='32' cy='32' r='24' fill='%23ffd23f' fill-opacity='.75' stroke='%232a2140' stroke-width='5'/%3E%3Ccircle cx='32' cy='32' r='5' fill='%232a2140'/%3E%3C/svg%3E") 32 32, pointer;
+}
+#fx { position: fixed; inset: 0; z-index: 8; pointer-events: none; overflow: hidden; }
+.bit { position: absolute; left: 0; top: 0; }
+.star { clip-path: polygon(50% 0, 63% 35%, 100% 38%, 71% 60%, 81% 96%, 50% 75%, 19% 96%, 29% 60%, 0 38%, 37% 35%); }
+.dot { border-radius: 50%; }
+#start { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: #2a2140a6; padding-inline: 16px; }
+#start[hidden] { display: none; }
+#go {
+  display: grid; justify-items: center; gap: 2.4vmin; padding: 4vmin 7vmin; max-width: 100%; box-sizing: border-box;
+  border: 0; border-radius: 28px; background: var(--cream); color: var(--ink); cursor: inherit;
+  box-shadow: 0 8px 0 #6f4a1d, 0 18px 40px #0007; font: inherit;
+}
+#go:focus-visible { outline: 5px solid var(--sun); outline-offset: 5px; }
+#go h1 { margin: 0; font: 800 clamp(34px, 9vmin, 88px)/1 var(--display); }
+.play { width: 24vmin; height: 24vmin; border-radius: 50%; background: #e2513b; display: grid; place-items: center; box-shadow: inset 0 -1vmin 0 #0003; animation: breathe 1.6s ease-in-out infinite; }
+.play::after { content: ""; margin-left: 2.4vmin; border-left: 9vmin solid #fff; border-block: 5.6vmin solid #0000; }
+@keyframes breathe { 50% { transform: scale(1.07); } }
+#go small { font: 15px/1.4 system-ui, sans-serif; opacity: .75; text-wrap: balance; }
+@media (prefers-reduced-motion: reduce) { .play { animation: none; } }
+
+body { color: var(--ink); background: linear-gradient(180deg, var(--sky), var(--sky-low)); }
+#sun { position: fixed; right: 7vmin; top: 6vmin; width: 22vmin; aspect-ratio: 1; border-radius: 50%; background: var(--sun); box-shadow: 0 0 0 3vmin #ffd23f55, 0 0 0 6vmin #ffd23f2b; }
+#hills { position: fixed; inset: auto 0 0 0; height: 26vh; }
+#hills::before, #hills::after { content: ""; position: absolute; bottom: 0; border-radius: 50% 50% 0 0; }
+#hills::before { left: -20%; width: 90%; height: 100%; background: var(--hill-far); }
+#hills::after { right: -20%; width: 100%; height: 72%; background: var(--hill); }
+#sky { position: fixed; inset: 0; overflow: hidden; }
+.bub {
+  position: absolute; left: 0; top: 0; border-radius: 50%; display: grid; place-items: center; will-change: transform;
+  background: radial-gradient(circle at 32% 28%, #ffffffe6 0 9%, #ffffff33 10% 38%, #ffffff14 39% 70%, var(--tint) 100%);
+  box-shadow: inset 0 0 0 .4vmin #ffffffb3, inset -.6vmin -.8vmin 2vmin var(--tint);
+}
+.bub span { font: calc(var(--d) * .52)/1 var(--emoji); }
+.falling { position: fixed; left: 0; top: 0; z-index: 7; pointer-events: none; font-family: var(--emoji); line-height: 1; }
+</style>
+
+<div id="sun"></div>
+<div id="hills"></div>
+<div id="sky"></div>
+<div id="fx"></div>
+<div id="start">
+  <button id="go" type="button">
+    <span class="play"></span>
+    <h1>Бульбашки</h1>
+    <small>Натисни, і відкриється на весь екран. Вийти: затисни Esc, потім Alt+F4.</small>
+  </button>
+</div>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const rnd = n => Math.floor(Math.random() * n);
+const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const anim = (el, frames, ms, opt = {}) => el.animate(frames, { duration: ms, easing: 'ease-out', ...opt });
+const NS = 'http://www.w3.org/2000/svg';
+
+/* ---------- звук: всё синтезируется, файлов нет ---------- */
+let ac, master, noiseBuf;
+function initAudio() {
+  if (ac) return ac.resume();
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  const comp = ac.createDynamicsCompressor();
+  master = ac.createGain(); master.gain.value = .6;
+  master.connect(comp); comp.connect(ac.destination);
+  noiseBuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
+  const d = noiseBuf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+}
+function env(v, at, d) {
+  const g = ac.createGain(), t = ac.currentTime + at;
+  g.gain.setValueAtTime(v, t);
+  g.gain.exponentialRampToValueAtTime(.001, t + d);
+  g.connect(master);
+  return g;
+}
+function tone(f, d = .3, { type = 'sine', v = .3, at = 0, to } = {}) {
+  if (!ac) return;
+  const o = ac.createOscillator(), t = ac.currentTime + at;
+  o.type = type; o.frequency.setValueAtTime(f, t);
+  if (to) o.frequency.exponentialRampToValueAtTime(to, t + d);
+  o.connect(env(v, at, d)); o.start(t); o.stop(t + d);
+}
+function noise(d = .1, { f = 1500, q = 1, v = .3, at = 0 } = {}) {
+  if (!ac) return;
+  const s = ac.createBufferSource(), b = ac.createBiquadFilter(), t = ac.currentTime + at;
+  s.buffer = noiseBuf; b.type = 'bandpass'; b.frequency.value = f; b.Q.value = q;
+  s.connect(b); b.connect(env(v, at, d)); s.start(t, Math.random() * .5, d);
+}
+const PENTA = [523, 587, 659, 784, 880, 1047, 1175, 1319];
+const pop = () => { noise(.05, { f: 2400, v: .3 }); tone(500 + rnd(500), .1, { to: 180, v: .28 }); };
+
+/* голос: украинский, если есть; иначе русская Ирина, которой слова записаны так, чтобы звучали по-украински */
+let voice;
+function pickVoice() {
+  const all = speechSynthesis.getVoices(), has = l => v => v.lang.toLowerCase().startsWith(l);
+  voice = all.find(has('uk')) || all.find(v => has('ru')(v) && /irina/i.test(v.name)) || all.find(has('ru'));
+}
+const RU_SOUNDS = { и: 'ы', і: 'и', І: 'И', е: 'э', є: 'е', ї: 'йи', "'": 'ъ' };
+const forVoice = (t, lang) => lang.toLowerCase().startsWith('uk') ? t : t.replace(/[иіІеєї']/g, c => RU_SOUNDS[c]);
+if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+function say(text, at = 0) {
+  const phone = window.KlacTTS; // в приложении на Android говорит сам телефон: встроенный браузер голоса не имеет
+  if (!phone && !voice) return;
+  const go = () => {
+    if (phone) return phone.say(forVoice(text, phone.lang()));
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(forVoice(text, voice.lang));
+    u.voice = voice; u.lang = voice.lang; u.rate = .85; u.pitch = 1.25;
+    speechSynthesis.speak(u);
+  };
+  at ? setTimeout(go, at) : go();
+}
+
+/* ---------- эффекты: звёзды из места нажатия и след за мышкой ---------- */
+const fx = $('#fx');
+const COLORS = ['#ff4d4d', '#ffb400', '#ffe14d', '#37c871', '#2fa8ff', '#a06bff', '#ff6fb5'];
+function bit(cls, x, y, size) {
+  if (fx.childElementCount > 160) return null;
+  const b = document.createElement('div');
+  b.className = 'bit ' + cls;
+  b.style.cssText = `width:${size}px;height:${size}px;background:${COLORS[rnd(COLORS.length)]}`;
+  fx.append(b);
+  return b;
+}
+function burst(x, y, n = 9) {
+  const u = Math.min(innerWidth, innerHeight) / 1000;
+  for (let i = 0; i < n; i++) {
+    const size = (26 + rnd(30)) * u + 8, b = bit('star', x, y, size);
+    if (!b) return;
+    const a = i / n * 6.283 + Math.random(), r = (110 + rnd(150)) * u + 30;
+    const dx = x + Math.cos(a) * r - size / 2, dy = y + Math.sin(a) * r - size / 2;
+    anim(b, [
+      { transform: `translate(${x - size / 2}px,${y - size / 2}px) scale(.3)`, opacity: 1 },
+      { transform: `translate(${dx}px,${dy}px) rotate(${rnd(360)}deg) scale(1)`, opacity: 1, offset: .75 },
+      { transform: `translate(${dx}px,${dy + 30}px) rotate(${rnd(360)}deg) scale(.5)`, opacity: 0 },
+    ], 750).onfinish = () => b.remove();
+  }
+}
+let lastTrail = 0;
+function trail(x, y) {
+  const now = performance.now();
+  if (calm || now - lastTrail < 50) return;
+  lastTrail = now;
+  const size = 12 + rnd(16), b = bit('dot', x, y, size);
+  if (!b) return;
+  anim(b, [
+    { transform: `translate(${x - size / 2}px,${y - size / 2}px)`, opacity: .9 },
+    { transform: `translate(${x - size / 2}px,${y + 24}px) scale(.2)`, opacity: 0 },
+  ], 650).onfinish = () => b.remove();
+}
+
+const ANIMALS = [
+  ['🐱', 'Кішка! Няв!'], ['🐶', 'Собачка! Гав-гав!'], ['🐮', 'Корова! Му-у!'], ['🐷', 'Свинка! Рох-рох!'],
+  ['🐸', 'Жабка! Ква-ква!'], ['🦆', 'Качечка! Кря-кря!'], ['🐔', 'Курочка! Ко-ко-ко!'], ['🐑', 'Овечка! Бе-е!'],
+  ['🐴', 'Конячка! І-го-го!'], ['🐭', 'Мишка! Пі-пі!'], ['🐻', 'Ведмедик!'], ['🐰', 'Зайчик!'],
+];
+
+let lastInput = 0;
+const started = () => $('#start').hidden;
+const KEYROWS = [
+  [0, 'Backquote Digit1 Digit2 Digit3 Digit4 Digit5 Digit6 Digit7 Digit8 Digit9 Digit0 Minus Equal Backspace'],
+  [1, 'Tab KeyQ KeyW KeyE KeyR KeyT KeyY KeyU KeyI KeyO KeyP BracketLeft BracketRight Backslash'],
+  [1, 'CapsLock KeyA KeyS KeyD KeyF KeyG KeyH KeyJ KeyK KeyL Semicolon Quote Enter'],
+  [2, 'ShiftLeft KeyZ KeyX KeyC KeyV KeyB KeyN KeyM Comma Period Slash ShiftRight'],
+  [2, 'ControlLeft MetaLeft AltLeft Space AltRight MetaRight ContextMenu ControlRight'],
+];
+const KEYPOS = {};
+KEYROWS.forEach(([, s], r) => s.split(' ').forEach((c, n, a) => { KEYPOS[c] = { x: (n + .5) / a.length, y: (r + .5) / KEYROWS.length }; }));
+
+addEventListener('contextmenu', e => e.preventDefault());
+addEventListener('dragstart', e => e.preventDefault());
+addEventListener('beforeunload', e => { if (started()) e.preventDefault(); });
+
+/* ---------- старт и полный экран ---------- */
+const isIPad = navigator.maxTouchPoints > 1 && /Mac|iPad/.test(navigator.platform);
+if (window.KlacTTS) $('#go small').textContent = 'Вийти: двічі натисни «Назад».';
+else if (isIPad) $('#go small').textContent = navigator.standalone ? 'Натисни, щоб почати.' : 'Щоб встановити: «Поділитися», потім «На початковий екран».';
+
+/* iPad может усыпить звук, пока приложение в фоне: будим при возврате и при каждом касании */
+const wakeAudio = () => { if (ac && ac.state !== 'running') ac.resume().catch(() => {}); };
+document.addEventListener('visibilitychange', wakeAudio);
+document.addEventListener('pointerdown', wakeAudio, true);
+
+let wasFull = false;
+$('#go').addEventListener('click', () => {
+  $('#start').hidden = true;
+  initAudio();
+  if ('speechSynthesis' in window) { // iPad разрешает голос только после нажатия и не всегда сообщает о готовности голосов
+    pickVoice();
+    speechSynthesis.speak(new SpeechSynthesisUtterance(' '));
+  }
+  lastInput = performance.now();
+  if (window.KlacTTS) return; // на Android весь экран уже держит само приложение
+  document.documentElement.requestFullscreen?.()
+    .then(() => { wasFull = true; return navigator.keyboard?.lock?.(); })
+    .catch(() => {});
+});
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && wasFull) { wasFull = false; $('#start').hidden = false; }
+});
+
+const sky = $('#sky');
+const TINTS = ['#ff6fb566', '#2fa8ff66', '#ffb40066', '#37c87166', '#a06bff66', '#ff4d4d55'];
+const MAX = 14;
+let bubbles = [], pops = 0;
+const unit = () => Math.min(innerWidth, innerHeight);
+
+function spawn(x, y, big) {
+  if (bubbles.length >= MAX + 8) return;
+  const d = unit() * (big ? .3 : .17 + Math.random() * .13);
+  const el = document.createElement('div');
+  el.className = 'bub';
+  el.style.cssText = `width:${d}px;height:${d}px;--d:${d}px;--tint:${TINTS[rnd(TINTS.length)]}`;
+  const pet = Math.random() < .55 ? ANIMALS[rnd(ANIMALS.length)] : null;
+  if (pet) { const s = document.createElement('span'); s.textContent = pet[0]; el.append(s); }
+  sky.append(el);
+  const b = { el, d, pet, x: x ?? d / 2 + Math.random() * (innerWidth - d), y: y ?? innerHeight + d / 2,
+    v: unit() * (calm ? .03 : .06 + Math.random() * .07), phase: Math.random() * 6.28 };
+  bubbles.push(b);
+  anim(el, [{ opacity: 0 }, { opacity: 1 }], 200);
+  return b;
+}
+const px = b => b.x + Math.sin(b.phase) * unit() * .025;
+
+let last = performance.now(), sinceSpawn = 0;
+function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000);
+  last = now;
+  if (started()) {
+    sinceSpawn += dt;
+    if (sinceSpawn > .75 && bubbles.length < MAX) { sinceSpawn = 0; spawn(); }
+    bubbles = bubbles.filter(b => {
+      b.y -= b.v * dt; b.phase += dt * 1.2;
+      if (b.y < -b.d) { b.el.remove(); return false; }
+      b.el.style.transform = `translate(${px(b) - b.d / 2}px,${b.y - b.d / 2}px)`;
+      return true;
+    });
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+function dropPet(b) {
+  const size = b.d * .75, x = px(b) - size / 2, f = document.createElement('div');
+  f.className = 'falling'; f.textContent = b.pet[0]; f.style.fontSize = size + 'px';
+  document.body.append(f);
+  const land = innerHeight - size * 1.1 - Math.random() * innerHeight * .08;
+  anim(f, [
+    { transform: `translate(${x}px,${b.y - size / 2}px) scale(.8)` },
+    { transform: `translate(${x}px,${land}px)`, offset: .45, easing: 'ease-out' },
+    { transform: `translate(${x}px,${land - size * .35}px)`, offset: .6, easing: 'ease-in' },
+    { transform: `translate(${x}px,${land}px)`, offset: .75 },
+    { transform: `translate(${x}px,${land}px)`, opacity: 1, offset: .92 },
+    { transform: `translate(${x}px,${land}px) scale(.7)`, opacity: 0 },
+  ], 2600, { easing: 'ease-in' }).onfinish = () => f.remove();
+}
+
+function popBubble(b) {
+  bubbles = bubbles.filter(o => o !== b);
+  const x = px(b), y = b.y;
+  b.el.remove();
+  pop();
+  burst(x, y, 8);
+  lastInput = performance.now();
+  if (b.pet) { dropPet(b); say(b.pet[1], 120); }
+  if (++pops % 10 === 0) hooray();
+}
+
+/* каждый десятый пузырь — маленький праздник */
+function hooray() {
+  PENTA.forEach((f, n) => tone(f, .28, { type: 'triangle', v: .22, at: .15 + n * .08 }));
+  say('Ура!', 150);
+  for (let i = 0; i < 8; i++) setTimeout(() => { spawn(innerWidth * (i + .5) / 8, innerHeight + 40); burst(innerWidth * (i + .5) / 8, innerHeight * .55, 6); }, i * 90);
+}
+
+const hit = (x, y) => bubbles.find(b => Math.hypot(px(b) - x, b.y - y) < b.d * .58);
+
+document.addEventListener('pointerdown', e => {
+  if (!started()) return;
+  lastInput = performance.now();
+  const b = hit(e.clientX, e.clientY);
+  if (b) { popBubble(b); return; }
+  spawn(e.clientX, e.clientY, true); // мимо не бывает: нажатие выдувает новый пузырь
+  tone(240, .24, { to: 620, v: .2 });
+});
+document.addEventListener('pointermove', e => {
+  if (!started() || e.pointerType !== 'mouse') return;
+  trail(e.clientX, e.clientY);
+  const b = hit(e.clientX, e.clientY); // мышкой двухлетке попасть и нажать трудно: хватит задеть
+  if (b) popBubble(b);
+});
+document.addEventListener('keydown', e => {
+  if (!started()) return;
+  e.preventDefault();
+  if (e.repeat) return;
+  const x = innerWidth * (KEYPOS[e.code] ? KEYPOS[e.code].x : Math.random());
+  const near = bubbles.filter(b => b.y < innerHeight).sort((a, c) => Math.abs(px(a) - x) - Math.abs(px(c) - x))[0];
+  if (near && Math.abs(px(near) - x) < innerWidth * .3) popBubble(near);
+  else { spawn(x); tone(240, .24, { to: 620, v: .2 }); }
+});
+addEventListener('wheel', e => e.preventDefault(), { passive: false });
+</script>
+<script>navigator.serviceWorker?.register('sw.js').catch(() => {});</script>
+</html>
